@@ -1,0 +1,6 @@
+node_modules/
+.bench-out/
+.studio-dist/
+dist/
+*.log
+.DS_Store

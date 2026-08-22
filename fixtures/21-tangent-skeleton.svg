@@ -1,0 +1,7 @@
+<!-- A lettermark-style skeleton: one stroked centerline of lines and arcs, every
+     join tangent, with a true semicircle half-turn. The viewBox is the ink's own
+     bounding box, so the mark touches all four edges. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 14 117 91">
+  <path d="M20 90V40A20 20 0 0 1 40 20H100A25 25 0 0 1 100 70H50A15 15 0 0 0 35 85V105"
+        fill="none" stroke="#111111" stroke-width="12" stroke-linecap="butt" stroke-linejoin="round"/>
+</svg>

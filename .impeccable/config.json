@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "studio/index.html"
+        ],
+        "createdAt": "2026-08-22T12:15:12.600Z",
+        "reason": "design review 2026-08-22: dense Operate-mode instrument panel; compressed 10-13px scale intentional, hierarchy via weight and case; rule stays live elsewhere"
+      }
+    ]
+  }
+}
