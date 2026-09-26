@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- App-icon tile: the mark on its own drafting board — the studio's canvas
+       neutral with a faint 64px grid, the same surface the artwork sits on in
+       the app. Rasterize from this for PWA / touch icons. -->
+  <defs>
+    <clipPath id="tile">
+      <rect width="512" height="512" rx="96"/>
+    </clipPath>
+    <clipPath id="ink-a">
+      <path d="M5 7.5 Q5 5 7.5 5 H14 A13 13 0 0 1 27 18 V24.5 Q27 27 24.5 27 H7.5 Q5 27 5 24.5 Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="#ededed"/>
+    <path d="M64 0V512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512M448 0V512M0 64H512M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M0 448H512" stroke="#e3e3e3" stroke-width="2"/>
+    <g transform="translate(64 64) scale(12)">
+      <path d="M5 7.5 Q5 5 7.5 5 H14 A13 13 0 0 1 27 18 V24.5 Q27 27 24.5 27 H7.5 Q5 27 5 24.5 Z" fill="#141414"/>
+      <g clip-path="url(#ink-a)">
+        <circle cx="14" cy="18" r="13" fill="none" stroke="#ffffff" stroke-opacity=".45" stroke-width="1.2" stroke-dasharray="2.6 2.8"/>
+        <path d="M14 18 L23.19 8.81" stroke="#ffffff" stroke-opacity=".9" stroke-width="1.2" stroke-linecap="round"/>
+      </g>
+      <circle cx="14" cy="18" r="2.3" fill="#141414" stroke="#ffffff" stroke-width="1.3"/>
+      <circle cx="14" cy="5" r="1.7" fill="#ffffff" stroke="#141414" stroke-width="1.2"/>
+      <circle cx="27" cy="18" r="1.7" fill="#ffffff" stroke="#141414" stroke-width="1.2"/>
+    </g>
+  </g>
+</svg>

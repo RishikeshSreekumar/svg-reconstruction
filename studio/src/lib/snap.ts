@@ -51,17 +51,25 @@ export function snapPoint(p: Pt, ctx: SnapContext): SnapResult {
     return { p: { ...best.p }, hits: [best] };
   }
 
-  // Angled guides: perpendicular projection.
+  // Angled guides: perpendicular projection onto the nearest one in reach.
+  let bestA: Guideline | null = null;
+  let bestAD = ctx.tol;
   for (const g of ctx.guidelines) {
     if (g.kind !== 'angled') continue;
     const n = { x: -g.dir.y, y: g.dir.x };
     const d = (p.x - g.p.x) * n.x + (p.y - g.p.y) * n.y;
-    if (Math.abs(d) <= ctx.tol) {
-      out.x = p.x - d * n.x;
-      out.y = p.y - d * n.y;
-      hits.push(g);
-      return { p: out, hits };
+    if (Math.abs(d) <= bestAD) {
+      bestA = g;
+      bestAD = Math.abs(d);
     }
+  }
+  if (bestA && bestA.kind === 'angled') {
+    const n = { x: -bestA.dir.y, y: bestA.dir.x };
+    const d = (p.x - bestA.p.x) * n.x + (p.y - bestA.p.y) * n.y;
+    out.x = p.x - d * n.x;
+    out.y = p.y - d * n.y;
+    hits.push(bestA);
+    return { p: out, hits };
   }
 
   let xDone = false;

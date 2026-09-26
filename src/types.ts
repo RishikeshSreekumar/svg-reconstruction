@@ -115,8 +115,16 @@ export interface EllipseFit extends FitBase {
 
 export interface CubicFit extends FitBase {
   kind: 'cubic';
-  /** Raw fallback: the original samples, unmodelled. */
+  /**
+   * Raw fallback: the original samples, unmodelled — or, when `c1`/`c2` are
+   * present, a sampling of the true bezier they define with pts[0] and
+   * pts[pts.length-1] as its endpoints.
+   */
   pts: Pt[];
+  /** First bezier control point. Present only on authored curves. */
+  c1?: Pt;
+  /** Second bezier control point. Present only on authored curves. */
+  c2?: Pt;
 }
 
 export type Fit = LineFit | ArcFit | CircleFit | EllipseFit | CubicFit;
@@ -125,12 +133,23 @@ export type Fit = LineFit | ArcFit | CircleFit | EllipseFit | CubicFit;
 // Scene graph — the authoritative editable output
 // ---------------------------------------------------------------------------
 
-export type Shape =
-  | { kind: 'circle'; id: string; c: Pt; r: number; style: Style; meta: ShapeMeta }
-  | { kind: 'ellipse'; id: string; c: Pt; rx: number; ry: number; rot: number; style: Style; meta: ShapeMeta }
+export interface ShapeBase {
+  id: string;
+  style: Style;
+  meta: ShapeMeta;
+  /** Closed geometry subtracted from this shape by the editor. */
+  cutouts?: Cutout[];
+}
+
+/**
+ * Geometry captured by a boolean subtract operation. Cutouts deliberately do
+ * not carry paint: subtract uses the closed outline, as vector editors do.
+ */
+export type Cutout =
+  | { kind: 'circle'; c: Pt; r: number }
+  | { kind: 'ellipse'; c: Pt; rx: number; ry: number; rot: number }
   | {
       kind: 'rect';
-      id: string;
       x: number;
       y: number;
       w: number;
@@ -138,28 +157,40 @@ export type Shape =
       rx: number;
       /** Radians; 0 for axis-aligned. */
       rot: number;
-      style: Style;
-      meta: ShapeMeta;
     }
-  | { kind: 'line'; id: string; a: Pt; b: Pt; style: Style; meta: ShapeMeta }
-  | { kind: 'polygon'; id: string; pts: Pt[]; sides: number; c: Pt; r: number; rot: number; style: Style; meta: ShapeMeta }
+  | { kind: 'polygon'; pts: Pt[] }
+  | { kind: 'path'; contours: Contour[]; fillRule?: 'nonzero' | 'evenodd' };
+
+export type Shape = ShapeBase & (
+  | { kind: 'circle'; c: Pt; r: number }
+  | { kind: 'ellipse'; c: Pt; rx: number; ry: number; rot: number }
+  | {
+      kind: 'rect';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      rx: number;
+      /** Radians; 0 for axis-aligned. */
+      rot: number;
+    }
+  | { kind: 'line'; a: Pt; b: Pt }
+  | { kind: 'polygon'; pts: Pt[]; sides: number; c: Pt; r: number; rot: number }
   /** A contour built from fitted segments — the general case. */
-  | { kind: 'path'; id: string; contours: Contour[]; style: Style; meta: ShapeMeta }
+  | { kind: 'path'; contours: Contour[] }
   /**
    * Text carried through as-is: it is never fitted from outlines, only parsed
    * from a `<text>` element or placed by the editor. `p` is the anchor point.
    */
   | {
       kind: 'text';
-      id: string;
       p: Pt;
       text: string;
       fontSize: number;
       fontFamily: string;
       anchor: 'start' | 'middle' | 'end';
-      style: Style;
-      meta: ShapeMeta;
-    };
+    }
+);
 
 export interface Contour {
   segs: Fit[];

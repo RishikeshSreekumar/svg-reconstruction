@@ -6,9 +6,11 @@ export type ToolId =
   | 'rect'
   | 'line'
   | 'polygon'
+  | 'curve'
   | 'text'
   | 'guide-h'
-  | 'guide-v';
+  | 'guide-v'
+  | 'guide-angle';
 
 export type ToolGroup = 'nav' | 'shape' | 'guide';
 
@@ -30,9 +32,11 @@ export const TOOLS: ToolDef[] = [
   { id: 'rect', label: 'Rect', key: 'r', title: 'Add rectangle (R) — click, or drag to size', icon: 'rect', group: 'shape' },
   { id: 'line', label: 'Line', key: 'l', title: 'Add line (L) — click, or drag to size', icon: 'line', group: 'shape' },
   { id: 'polygon', label: 'Polygon', key: 'p', title: 'Add regular polygon (P) — click, or drag to size', icon: 'polygon', group: 'shape' },
+  { id: 'curve', label: 'Curve', key: 'b', title: 'Add bezier curve (B) — click, or drag to span it, then shape it by its control handles', icon: 'curve', group: 'shape' },
   { id: 'text', label: 'Text', key: 't', title: 'Add text (T)', icon: 'text', group: 'shape' },
   { id: 'guide-h', label: 'H guide', key: 'g', title: 'Add horizontal guideline (G)', icon: 'guide-h', group: 'guide' },
   { id: 'guide-v', label: 'V guide', key: 'j', title: 'Add vertical guideline (J)', icon: 'guide-v', group: 'guide' },
+  { id: 'guide-angle', label: 'Sloped guide', key: 'k', title: 'Add sloped guideline (K) — drag to set the angle', icon: 'guide-angle', group: 'guide' },
 ];
 
 export const TOOL_GROUPS: ToolGroup[] = ['nav', 'shape', 'guide'];

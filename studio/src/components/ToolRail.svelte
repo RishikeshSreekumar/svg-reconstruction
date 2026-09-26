@@ -4,6 +4,7 @@
   import { view } from '../state/view.svelte.ts';
   import { history } from '../state/history.svelte.ts';
   import { loadSVG } from '../lib/svg-load.ts';
+  import { tooltip } from '../lib/tooltip.ts';
   import Icon from './Icon.svelte';
 
   // View toggles live in the rail with the tools: they are all "how the canvas
@@ -58,7 +59,7 @@
         <button
           class="railbtn"
           class:active={tools.current === t.id}
-          title={t.title}
+          use:tooltip={{ text: t.title, place: 'right' }}
           aria-label={t.title}
           aria-pressed={tools.current === t.id}
           onclick={() => tools.set(t.id)}
@@ -74,7 +75,7 @@
 
   <div class="group" role="group" aria-label="View">
     {#each toggles as t (t.id)}
-      <button class="railbtn toggle" class:on={t.on} aria-pressed={t.on} title="{t.label} — {t.title}" aria-label={t.label} onclick={t.flip}>
+      <button class="railbtn toggle" class:on={t.on} aria-pressed={t.on} use:tooltip={{ text: `${t.label} — ${t.title}`, place: 'right' }} aria-label={t.label} onclick={t.flip}>
         <Icon name={t.icon} size={17} />
       </button>
     {/each}
@@ -84,7 +85,7 @@
 
   <div class="group" role="group" aria-label="History">
     {#each historyBtns as b (b.id)}
-      <button class="railbtn" title={b.title} aria-label={b.title} disabled={b.disabled} onclick={b.run}>
+      <button class="railbtn" use:tooltip={{ text: b.title, place: 'right' }} aria-label={b.title} disabled={b.disabled} onclick={b.run}>
         <Icon name={b.icon} size={17} />
       </button>
     {/each}

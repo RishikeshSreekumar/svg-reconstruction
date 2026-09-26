@@ -1,8 +1,8 @@
-import type { Constraint, Contour, Fit, Options, Pt, Scene, SegRef, Shape } from '../types.ts';
+import type { Constraint, Contour, Cutout, Fit, Options, Pt, Scene, SegRef, Shape } from '../types.ts';
 import { DEFAULTS } from '../types.ts';
-import { dist, len, norm, sub } from '../geom/vec.ts';
-import { segEnd, segStart, syncArcEnds } from '../geom/seg.ts';
-import { captureJoins, maxGap, refitArcRadius, solveContour, type JoinSpec } from './solve.ts';
+import { dist, dot, len, norm, sub } from '../geom/vec.ts';
+import { isBezier, segEnd, segStart, syncArcEnds, syncCubic } from '../geom/seg.ts';
+import { captureJoins, maxGap, placeCubicEnd, refitArcRadius, solveContour, type JoinSpec } from './solve.ts';
 import { analyzeConstruction } from '../infer/construction.ts';
 
 export { captureJoins, maxGap, refitArcRadius, solveContour, type JoinSpec, type JoinIntent } from './solve.ts';
@@ -60,7 +60,7 @@ export function shapeFields(s: Shape): Field[] {
       break;
     case 'rect':
       f('x', 'x', s.x), f('y', 'y', s.y), f('w', 'w', s.w), f('h', 'h', s.h), f('rx', 'rx', s.rx);
-      if (Math.abs(s.rot) > 1e-9) f('rot', 'rot', deg(s.rot), true);
+      f('rot', 'rot', deg(s.rot), true);
       break;
     case 'polygon':
       f('c.x', 'cx', s.c.x), f('c.y', 'cy', s.c.y), f('r', 'r', s.r), f('sides', 'sides', s.sides);
@@ -174,6 +174,37 @@ export function translateShape(s: Shape, dx: number, dy: number): void {
       }
       break;
   }
+  translateCutouts(s.cutouts, dx, dy);
+}
+
+function translateCutout(s: Cutout, dx: number, dy: number): void {
+  const p = (q: Pt): Pt => ({ x: q.x + dx, y: q.y + dy });
+  switch (s.kind) {
+    case 'circle':
+    case 'ellipse':
+      s.c = p(s.c);
+      break;
+    case 'rect':
+      s.x += dx;
+      s.y += dy;
+      break;
+    case 'polygon':
+      s.pts = s.pts.map(p);
+      break;
+    case 'path':
+      for (const c of s.contours) for (const f of c.segs) {
+        if (f.kind === 'line') f.a = p(f.a), f.b = p(f.b);
+        else if (f.kind === 'arc') f.c = p(f.c), f.a = p(f.a), f.b = p(f.b);
+        else if (f.kind === 'circle' || f.kind === 'ellipse') f.c = p(f.c);
+        else f.pts = f.pts.map(p);
+      }
+      break;
+  }
+}
+
+function translateCutouts(cutouts: Cutout[] | undefined, dx: number, dy: number): void {
+  if (!cutouts || (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12)) return;
+  for (const c of cutouts) translateCutout(c, dx, dy);
 }
 
 /** Regenerate a polygon's vertices after its centre, radius, count or rotation changed. */
@@ -218,7 +249,10 @@ export function editShapeParams(
   if (!target || Object.values(values).some((v) => !Number.isFinite(v))) return out;
 
   const before = new Map(scene.shapes.map((s) => [s.id, shapeAnchor(s)]));
+  const targetOrigin = target.kind === 'rect' ? { x: target.x, y: target.y } : shapeAnchor(target);
   const fields = new Map(shapeFields(target).map((f) => [f.key, f]));
+  // Validate the whole batch before writing anything: a bad key or value must
+  // refuse the edit atomically, not leave the shape half-mutated.
   const actual = new Map<string, number>();
   for (const [path, value] of Object.entries(values)) {
     const field = fields.get(path);
@@ -226,9 +260,19 @@ export function editShapeParams(
     const v = field.deg ? rad(value) : value;
     if ((path === 'r' || path === 'rx' || path === 'ry' || path === 'w' || path === 'h') && !(v >= 0)) return out;
     actual.set(path, v);
-    setPath(target as unknown as Record<string, unknown>, path, v);
   }
+  for (const [path, v] of actual) setPath(target as unknown as Record<string, unknown>, path, v);
   refreshPolygon(target);
+  // Positional fields move attached cutouts with their parent. Size and
+  // rotation edits leave the cut geometry in place, which keeps subtraction
+  // non-destructive rather than silently scaling the cutter.
+  const oldAnchor = before.get(id)!;
+  const newAnchor = shapeAnchor(target);
+  const moveX = actual.has('c.x') || (target.kind === 'rect' && actual.has('x'));
+  const moveY = actual.has('c.y') || (target.kind === 'rect' && actual.has('y'));
+  const dx = target.kind === 'rect' ? target.x - targetOrigin.x : newAnchor.x - oldAnchor.x;
+  const dy = target.kind === 'rect' ? target.y - targetOrigin.y : newAnchor.y - oldAnchor.y;
+  translateCutouts(target.cutouts, moveX ? dx : 0, moveY ? dy : 0);
   markEdited(target);
   out.applied = true;
   if (!opts.enforce) return out;
@@ -558,7 +602,76 @@ export function editSegmentParam(
   return out;
 }
 
-const cloneFit = (f: Fit): Fit => (f.kind === 'cubic' ? { ...f, pts: f.pts.map((p) => ({ ...p })) } : { ...f });
+const cloneFit = (f: Fit): Fit =>
+  f.kind === 'cubic'
+    ? { ...f, pts: f.pts.map((p) => ({ ...p })), c1: f.c1 && { ...f.c1 }, c2: f.c2 && { ...f.c2 } }
+    : { ...f };
+
+/**
+ * Where the fillet refit would put an arc's centre at radius `r`, probed on a
+ * throwaway copy of the contour so nothing real moves.
+ */
+function probeArcCentre(contour: Contour, seg: number, joins: JoinSpec[], r: number): Pt {
+  const copy: Contour = { ...contour, segs: contour.segs.map(cloneFit) };
+  const f = copy.segs[seg] as Extract<Fit, { kind: 'arc' }>;
+  f.r = r;
+  syncArcEnds(f);
+  refitArcRadius(copy, seg, joins.map((j) => ({ ...j, at: { ...j.at } })));
+  return (copy.segs[seg] as Extract<Fit, { kind: 'arc' }>).c;
+}
+
+/**
+ * Set an arc's radius from a dragged point: solve for the radius whose refitted
+ * arc passes through `p`, then apply it through `editSegmentParam`.
+ *
+ * The naive drag rule — radius = distance from pointer to the current centre —
+ * diverges on a fillet: growing the radius moves the centre away along the
+ * corner bisector faster than the radius grows, so each pointer event amplifies
+ * the last and the arc runs away. The refit places the centre affinely in r,
+ * c(r) = c0 + r·v, so "the arc passes through p" is one quadratic in r:
+ * |p − c0 − r·v|² = r². Solving it lands the arc under the cursor and makes the
+ * drag a stable fixed point instead of a feedback loop.
+ */
+export function editSegmentRadiusAt(scene: Scene, ref: SegRef, p: Pt, opts: EditOptions = {}): SegEditResult {
+  const t = locate(scene, ref);
+  const fail: SegEditResult = { residual: 0, linked: [], applied: false };
+  if (!t || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return fail;
+  const f = t.contour.segs[ref.seg];
+  if (f.kind !== 'arc') return fail;
+
+  const joins = captureJoins(t.contour, opts.g1Tol ?? DEFAULTS.g1Tol);
+  const r0 = f.r;
+  const r1 = r0 * 1.5 + 1;
+  const cAt0 = probeArcCentre(t.contour, ref.seg, joins, r0);
+  const cAt1 = probeArcCentre(t.contour, ref.seg, joins, r1);
+  const v = { x: (cAt1.x - cAt0.x) / (r1 - r0), y: (cAt1.y - cAt0.y) / (r1 - r0) };
+  const c0 = { x: cAt0.x - r0 * v.x, y: cAt0.y - r0 * v.y };
+
+  // |w − r·v|² = r²  →  (|v|²−1)·r² − 2(w·v)·r + |w|² = 0
+  const w = sub(p, c0);
+  const a = dot(v, v) - 1;
+  const b = dot(w, v);
+  const c = dot(w, w);
+  let r: number;
+  if (Math.abs(a) < 1e-9) {
+    // Fixed centre (|v| = 0 gives a = −1, handled below); |v| = 1 degenerates
+    // to the linear case.
+    r = Math.abs(b) > 1e-12 ? c / (2 * b) : r0;
+  } else {
+    const disc = b * b - a * c;
+    if (disc < 0) {
+      // No radius reaches the pointer; take the closest approach.
+      r = b / a;
+    } else {
+      const sq = Math.sqrt(disc);
+      const roots = [(b + sq) / a, (b - sq) / a].filter((x) => x > 0 && Number.isFinite(x));
+      // Both roots put the arc through p; stay on the branch the drag is on.
+      r = roots.length ? roots.reduce((best, x) => (Math.abs(x - r0) < Math.abs(best - r0) ? x : best)) : r0;
+    }
+  }
+  if (!(r > 0) || !Number.isFinite(r)) return fail;
+  return editSegmentParam(scene, ref, 'r', r, opts);
+}
 
 const sameRef = (a: SegRef, b: SegRef): boolean => a.shape === b.shape && a.contour === b.contour && a.seg === b.seg;
 
@@ -591,7 +704,10 @@ export function moveJoin(scene: Scene, ref: SegRef, end: 'start' | 'end', x: num
       syncArcEnds(f);
     }
   }
-  if (f.kind !== 'line' && f.kind !== 'arc') {
+  if (f.kind === 'cubic') {
+    placeCubicEnd(f, end, { x, y });
+  }
+  if (f.kind !== 'line' && f.kind !== 'arc' && f.kind !== 'cubic') {
     out.applied = false;
     return out;
   }
@@ -601,6 +717,25 @@ export function moveJoin(scene: Scene, ref: SegRef, end: 'start' | 'end', x: num
     out.applied = false;
     return out;
   }
+  markEdited(t.shape);
+  return out;
+}
+
+/**
+ * Move one control point of an authored bezier. Control points steer tangents
+ * only — the endpoints stay put — so the neighbours never need re-solving.
+ */
+export function editCubicControl(scene: Scene, ref: SegRef, which: 'c1' | 'c2', p: Pt, opts: EditOptions = {}): SegEditResult {
+  void opts;
+  const t = locate(scene, ref);
+  const out: SegEditResult = { residual: 0, linked: [], applied: true };
+  const f = t?.contour.segs[ref.seg];
+  if (!t || !f || !isBezier(f) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+    out.applied = false;
+    return out;
+  }
+  f[which] = { x: p.x, y: p.y };
+  syncCubic(f);
   markEdited(t.shape);
   return out;
 }

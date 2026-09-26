@@ -1,4 +1,5 @@
-import type { ArcFit, Fit, Pt } from '../types.ts';
+import type { ArcFit, CubicFit, Fit, Pt } from '../types.ts';
+import { cubicAt } from './bezier.ts';
 import { angNorm, norm, sub } from './vec.ts';
 
 /**
@@ -23,6 +24,26 @@ export const arcDir = (f: ArcFit): 1 | -1 => (f.a1 >= f.a0 ? 1 : -1);
 export function syncArcEnds(f: ArcFit): void {
   f.a = arcPt(f, f.a0);
   f.b = arcPt(f, f.a1);
+}
+
+/** True when a cubic segment carries authored bezier control points. */
+export const isBezier = (f: Fit): f is CubicFit & { c1: Pt; c2: Pt } =>
+  f.kind === 'cubic' && f.c1 != null && f.c2 != null;
+
+/**
+ * Refresh a bezier cubic's samples from its endpoints and control points.
+ * pts[0] and pts[pts.length-1] are the authoritative endpoints; everything in
+ * between is derived, uniformly in t — enough for hit-testing and bboxes, while
+ * rendering and emission use the exact control points.
+ */
+export function syncCubic(f: CubicFit, n = 24): void {
+  if (!isBezier(f) || f.pts.length < 2) return;
+  const p0 = f.pts[0];
+  const p3 = f.pts[f.pts.length - 1];
+  const out: Pt[] = [p0];
+  for (let i = 1; i < n; i++) out.push(cubicAt(p0, f.c1, f.c2, p3, i / n));
+  out.push(p3);
+  f.pts = out;
 }
 
 /** Start point of a segment in travel order. Null for whole closed contours. */
@@ -70,6 +91,13 @@ export function segTangent(f: Fit, end: 'start' | 'end'): Pt | null {
     case 'cubic': {
       const p = f.pts;
       if (p.length < 2) return null;
+      // A bezier's exact tangent is its control leg; fall back to the samples
+      // when the leg is degenerate (control point on the endpoint).
+      if (isBezier(f)) {
+        const d = end === 'start' ? sub(f.c1, p[0]) : sub(p[p.length - 1], f.c2);
+        const u = norm(d);
+        if (u.x !== 0 || u.y !== 0) return u;
+      }
       const d = end === 'start' ? sub(p[1], p[0]) : sub(p[p.length - 1], p[p.length - 2]);
       const u = norm(d);
       return u.x === 0 && u.y === 0 ? null : u;

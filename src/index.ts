@@ -2,7 +2,7 @@ export * from './types.ts';
 export { reconstructSVG, reconstructDoc } from './reconstruct.ts';
 export { normalizeSVG, docBBox, shapeToCmds, type Doc } from './parse/normalize.ts';
 export { parsePathData, splitSubPaths, transformCmds, flattenSubPath, cmdsToD } from './parse/path.ts';
-export { sceneToSVG, sceneToText, shapeToElement, contourToD } from './emit/to-svg.ts';
+export { sceneToSVG, sceneToText, shapeToElement, cutoutToElement, contourToD } from './emit/to-svg.ts';
 export { segmentPolyline, detectCorners, fitRun, mdlCost } from './fit/segment.ts';
 export { fitLine, fitArc, fitCircle, fitEllipse, taubinCircle, refineCircle, sampleFit } from './fit/primitives.ts';
 export { recognizeClosed, tryRect, tryRegularPolygon, type ShapeGuess } from './fit/shapes.ts';
@@ -14,6 +14,8 @@ export {
   editShapeParam,
   editShapeParams,
   editSegmentParam,
+  editSegmentRadiusAt,
+  editCubicControl,
   moveJoin,
   moveSegmentCenter,
   rebuildConstruction,
@@ -35,14 +37,22 @@ export { inferGuidelines } from './infer/guidelines.ts';
 export {
   createShape,
   deleteShape,
+  breakApartShape,
+  sizeCurve,
+  type BreakResult,
   translateShapeInScene,
   reorderShape,
+  cutShape,
+  findCutTarget,
+  isCuttableShape,
+  shapeBBox,
   nextUserId,
   nextUserGuideId,
   type CreatableKind,
   type CreateOptions,
+  type CutResult,
 } from './edit/create.ts';
-export { segStart, segEnd, segTangent, segPt, arcPt, reangle, syncArcEnds, arcDir, angleOfPt } from './geom/seg.ts';
+export { segStart, segEnd, segTangent, segPt, arcPt, reangle, syncArcEnds, arcDir, angleOfPt, isBezier, syncCubic } from './geom/seg.ts';
 export { expandStroke, offsetSide, type Cap, type Join } from './geom/offset.ts';
 export { hausdorff, directedHausdorff, resample, signedArea, bboxOf, bboxDiag } from './geom/poly.ts';
 export { flattenSVG } from './bench/flatten.ts';

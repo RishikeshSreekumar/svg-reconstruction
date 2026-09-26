@@ -1,4 +1,4 @@
-import type { Contour, Fit, Pt, Scene, SegRef, Shape, Style } from '../types.ts';
+import type { Contour, Cutout, Fit, Pt, Scene, SegRef, Shape, Style } from '../types.ts';
 import { dist } from '../geom/vec.ts';
 
 export interface EmitOptions {
@@ -62,9 +62,14 @@ function fitToD(f: Fit, p: number, first: boolean): string {
       return `${M(a)}A${fmt(f.rx, p)} ${fmt(f.ry, p)} ${rot} 1 1 ${fmt(b.x, p)} ${fmt(b.y, p)}A${fmt(f.rx, p)} ${fmt(f.ry, p)} ${rot} 1 1 ${fmt(a.x, p)} ${fmt(a.y, p)}Z`;
     }
     case 'cubic': {
-      // Unmodelled fallback: keep the samples as a polyline so nothing is lost.
       const pts = f.pts;
       const head = first ? M(pts[0]) : '';
+      // An authored bezier keeps its control points; only the unmodelled
+      // fallback degrades to the sampled polyline so nothing is lost.
+      if (f.c1 && f.c2 && pts.length >= 2) {
+        const e = pts[pts.length - 1];
+        return `${head}C${fmt(f.c1.x, p)} ${fmt(f.c1.y, p)} ${fmt(f.c2.x, p)} ${fmt(f.c2.y, p)} ${fmt(e.x, p)} ${fmt(e.y, p)}`;
+      }
       return head + pts.slice(1).map((q) => `L${fmt(q.x, p)} ${fmt(q.y, p)}`).join('');
     }
   }
@@ -78,19 +83,43 @@ export function contourToD(c: Contour, p: number): string {
   return parts.join('');
 }
 
-export function shapeToElement(s: Shape, o: Required<EmitOptions>): string {
+export function cutoutToElement(s: Cutout, p: number, fill = 'black'): string {
+  switch (s.kind) {
+    case 'circle':
+      return `<circle cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" r="${fmt(s.r, p)}" fill="${fill}"/>`;
+    case 'ellipse': {
+      const rot = s.rot === 0 ? '' : ` transform="rotate(${fmt((s.rot * 180) / Math.PI, p)} ${fmt(s.c.x, p)} ${fmt(s.c.y, p)})"`;
+      return `<ellipse cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" rx="${fmt(s.rx, p)}" ry="${fmt(s.ry, p)}"${rot} fill="${fill}"/>`;
+    }
+    case 'rect': {
+      const rx = s.rx > 0 ? ` rx="${fmt(s.rx, p)}"` : '';
+      const rot = Math.abs(s.rot) < 1e-9 ? '' : ` transform="rotate(${fmt((s.rot * 180) / Math.PI, p)} ${fmt(s.x, p)} ${fmt(s.y, p)})"`;
+      return `<rect x="${fmt(s.x, p)}" y="${fmt(s.y, p)}" width="${fmt(s.w, p)}" height="${fmt(s.h, p)}"${rx}${rot} fill="${fill}"/>`;
+    }
+    case 'polygon':
+      return `<polygon points="${s.pts.map((q) => `${fmt(q.x, p)},${fmt(q.y, p)}`).join(' ')}" fill="${fill}"/>`;
+    case 'path': {
+      const d = s.contours.map((c) => contourToD(c, p)).join('');
+      const rule = s.fillRule === 'evenodd' ? ' fill-rule="evenodd"' : '';
+      return `<path d="${d}" fill="${fill}"${rule}/>`;
+    }
+  }
+}
+
+export function shapeToElement(s: Shape, o: Required<EmitOptions>, maskId?: string): string {
   const p = o.precision;
   const anno = o.annotate
     ? ` data-shape-id="${s.id}" data-confidence="${s.meta.confidence.toFixed(2)}" data-max-dev="${s.meta.maxDev.toExponential(2)}" data-from="${s.meta.from.join(',')}"${s.meta.note ? ` data-note="${s.meta.note}"` : ''}`
     : '';
   const st = styleAttrs(s.style, p);
+  const mask = maskId ? ` mask="url(#${maskId})"` : '';
 
   switch (s.kind) {
     case 'circle':
-      return `<circle cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" r="${fmt(s.r, p)}" ${st}${anno}/>`;
+      return `<circle cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" r="${fmt(s.r, p)}" ${st}${mask}${anno}/>`;
     case 'ellipse': {
       const rot = s.rot === 0 ? '' : ` transform="rotate(${fmt((s.rot * 180) / Math.PI, p)} ${fmt(s.c.x, p)} ${fmt(s.c.y, p)})"`;
-      return `<ellipse cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" rx="${fmt(s.rx, p)}" ry="${fmt(s.ry, p)}"${rot} ${st}${anno}/>`;
+      return `<ellipse cx="${fmt(s.c.x, p)}" cy="${fmt(s.c.y, p)}" rx="${fmt(s.rx, p)}" ry="${fmt(s.ry, p)}"${rot} ${st}${mask}${anno}/>`;
     }
     case 'rect': {
       const rx = s.rx > 0 ? ` rx="${fmt(s.rx, p)}"` : '';
@@ -99,25 +128,25 @@ export function shapeToElement(s: Shape, o: Required<EmitOptions>): string {
           ? ''
           : ` transform="rotate(${fmt((s.rot * 180) / Math.PI, p)} ${fmt(s.x, p)} ${fmt(s.y, p)})"`;
       // rotate(a, x, y) pins the local origin, so x/y stay the rect's own corner.
-      return `<rect x="${fmt(s.x, p)}" y="${fmt(s.y, p)}" width="${fmt(s.w, p)}" height="${fmt(s.h, p)}"${rx}${rot} ${st}${anno}/>`;
+      return `<rect x="${fmt(s.x, p)}" y="${fmt(s.y, p)}" width="${fmt(s.w, p)}" height="${fmt(s.h, p)}"${rx}${rot} ${st}${mask}${anno}/>`;
     }
     case 'line':
-      return `<line x1="${fmt(s.a.x, p)}" y1="${fmt(s.a.y, p)}" x2="${fmt(s.b.x, p)}" y2="${fmt(s.b.y, p)}" ${st}${anno}/>`;
+      return `<line x1="${fmt(s.a.x, p)}" y1="${fmt(s.a.y, p)}" x2="${fmt(s.b.x, p)}" y2="${fmt(s.b.y, p)}" ${st}${mask}${anno}/>`;
     case 'polygon': {
       const pts = s.pts.map((q) => `${fmt(q.x, p)},${fmt(q.y, p)}`).join(' ');
-      return `<polygon points="${pts}" ${st}${anno}/>`;
+      return `<polygon points="${pts}" ${st}${mask}${anno}/>`;
     }
     case 'path': {
       // Holes keep the source winding, so nonzero still cuts them correctly.
       const d = s.contours.map((c) => contourToD(c, p)).join('');
-      return `<path d="${d}" ${st}${anno}/>`;
+      return `<path d="${d}" ${st}${mask}${anno}/>`;
     }
     case 'text': {
       const anchor = s.anchor !== 'start' ? ` text-anchor="${s.anchor}"` : '';
       const fill = `fill="${s.style.fill ?? 'black'}"`;
       return (
         `<text x="${fmt(s.p.x, p)}" y="${fmt(s.p.y, p)}" font-size="${fmt(s.fontSize, p)}"` +
-        ` font-family="${escXML(s.fontFamily)}"${anchor} ${fill}${anno}>${escXML(s.text)}</text>`
+        ` font-family="${escXML(s.fontFamily)}"${anchor} ${fill}${mask}${anno}>${escXML(s.text)}</text>`
       );
     }
   }
@@ -126,8 +155,30 @@ export function shapeToElement(s: Shape, o: Required<EmitOptions>): string {
 export function sceneToSVG(scene: Scene, opts: EmitOptions = {}): string {
   const o: Required<EmitOptions> = { precision: opts.precision ?? 3, annotate: opts.annotate ?? false };
   const vb = scene.viewBox.map((v) => fmt(v, 4)).join(' ');
-  const body = scene.shapes.map((s) => '  ' + shapeToElement(s, o)).join('\n');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(scene.width, 4)}" height="${fmt(scene.height, 4)}" viewBox="${vb}">\n${body}\n</svg>\n`;
+  const masks = new Map<string, string>();
+  scene.shapes.forEach((s, i) => {
+    if (s.cutouts?.length) masks.set(s.id, `cut-${s.id.replace(/[^a-zA-Z0-9_.-]/g, '_')}-${i}`);
+  });
+  const [x, y, w, h] = scene.viewBox;
+  const defs = masks.size
+    ? [
+        '  <defs>',
+        ...scene.shapes.flatMap((s) => {
+          const id = masks.get(s.id);
+          if (!id || !s.cutouts?.length) return [];
+          return [
+            `    <mask id="${id}" maskUnits="userSpaceOnUse" x="${fmt(x, 4)}" y="${fmt(y, 4)}" width="${fmt(w, 4)}" height="${fmt(h, 4)}" style="mask-type:luminance">`,
+            `      <rect x="${fmt(x, 4)}" y="${fmt(y, 4)}" width="${fmt(w, 4)}" height="${fmt(h, 4)}" fill="white"/>`,
+            ...s.cutouts.map((c) => `      ${cutoutToElement(c, o.precision)}`),
+            '    </mask>',
+          ];
+        }),
+        '  </defs>',
+      ].join('\n')
+    : '';
+  const body = scene.shapes.map((s) => '  ' + shapeToElement(s, o, masks.get(s.id))).join('\n');
+  const content = [defs, body].filter(Boolean).join('\n');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(scene.width, 4)}" height="${fmt(scene.height, 4)}" viewBox="${vb}">\n${content}\n</svg>\n`;
 }
 
 const refStr = (r: SegRef): string => `${r.shape}.${r.seg}`;
@@ -184,6 +235,7 @@ export function sceneToText(scene: Scene): string {
         L.push(`${s.id}  Text     "${s.text}" at (${f(s.p.x)}, ${f(s.p.y)}) size=${f(s.fontSize)} ${s.anchor}  [${conf}]`);
         break;
     }
+    if (s.cutouts?.length) L.push(`         ${s.cutouts.length} cutout(s)`);
     if (s.meta.note) L.push(`         ${s.meta.note}`);
     if (s.kind === 'path') L.push(...segTable(scene, s.id));
   }

@@ -36,21 +36,32 @@ function circleish(shapes: Shape[]): Circleish[] {
   return out;
 }
 
-/** Group values that sit within `tol` of each other. */
+/**
+ * Group values that sit within `tol` of each other. Membership is measured
+ * against the running cluster mean, not the previous item — single linkage
+ * would let a chain of values, each within `tol` of its neighbour, merge into
+ * one group spanning far more than the tolerance and then snap together.
+ */
 function cluster<T>(items: T[], key: (t: T) => number, tol: number): T[][] {
   const sorted = [...items].sort((a, b) => key(a) - key(b));
   const out: T[][] = [];
   let cur: T[] = [];
+  let sum = 0;
   for (const it of sorted) {
-    if (!cur.length || Math.abs(key(it) - key(cur[cur.length - 1])) <= tol) cur.push(it);
-    else {
+    if (!cur.length || Math.abs(key(it) - sum / cur.length) <= tol) {
+      cur.push(it);
+      sum += key(it);
+    } else {
       out.push(cur);
       cur = [it];
+      sum = key(it);
     }
   }
   if (cur.length) out.push(cur);
   return out.filter((g) => g.length > 1);
 }
+
+const meanOf = <T>(group: T[], key: (t: T) => number): number => group.reduce((s, g) => s + key(g), 0) / group.length;
 
 export interface ConstraintResult {
   constraints: Constraint[];
@@ -103,11 +114,13 @@ export function detectConstraints(shapes: Shape[], tol: number, regularize: bool
     }
   }
 
+  // Alignment reports the group mean, same as equal-radius — the minimum would
+  // put the guide at the edge of the cluster instead of through it.
   for (const group of cluster(cs, (c) => c.c.y, snapTol)) {
-    if (group.length > 1) constraints.push({ kind: 'aligned-h', ids: group.map((g) => g.id), y: group[0].c.y });
+    if (group.length > 1) constraints.push({ kind: 'aligned-h', ids: group.map((g) => g.id), y: meanOf(group, (g) => g.c.y) });
   }
   for (const group of cluster(cs, (c) => c.c.x, snapTol)) {
-    if (group.length > 1) constraints.push({ kind: 'aligned-v', ids: group.map((g) => g.id), x: group[0].c.x });
+    if (group.length > 1) constraints.push({ kind: 'aligned-v', ids: group.map((g) => g.id), x: meanOf(group, (g) => g.c.x) });
   }
 
   return { constraints, notes };

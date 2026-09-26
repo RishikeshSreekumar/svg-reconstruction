@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Shape } from '../../../src/types.ts';
+  import type { Cutout, Shape } from '../../../src/types.ts';
   import { contourToD } from '../../../src/index.ts';
 
   let {
@@ -8,7 +8,8 @@
     unit = 1,
     selected = false,
     hovered = false,
-  }: { s: Shape; hitPad?: number; unit?: number; selected?: boolean; hovered?: boolean } = $props();
+    viewBox = [0, 0, 100, 100],
+  }: { s: Shape; hitPad?: number; unit?: number; selected?: boolean; hovered?: boolean; viewBox?: [number, number, number, number] } = $props();
 
   const deg = (r: number): number => (r * 180) / Math.PI;
 
@@ -44,6 +45,11 @@
 
   const pathD = $derived(s.kind === 'path' ? s.contours.map((c) => contourToD(c, 3)).join('') : '');
   const polyPts = $derived(s.kind === 'polygon' ? s.pts.map((q) => `${q.x},${q.y}`).join(' ') : '');
+  // Copied, not aliased: `s` is a shallow clone, so sharing the cutouts array
+  // would hide length changes behind an unchanged reference.
+  const cuts = $derived([...(s.cutouts ?? [])]);
+  const maskId = $derived(`cut-preview-${s.id.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
+  const cutPathD = (c: Extract<Cutout, { kind: 'path' }>): string => c.contours.map((x) => contourToD(x, 3)).join('');
 </script>
 
 {#snippet geom(attrs: Record<string, unknown>)}
@@ -77,6 +83,28 @@
   {/if}
 {/snippet}
 
+{#snippet cutGeom(c: Cutout, attrs: Record<string, unknown>)}
+  {#if c.kind === 'circle'}
+    <circle cx={c.c.x} cy={c.c.y} r={c.r} {...attrs} />
+  {:else if c.kind === 'ellipse'}
+    <ellipse cx={c.c.x} cy={c.c.y} rx={c.rx} ry={c.ry} transform={c.rot !== 0 ? `rotate(${deg(c.rot)} ${c.c.x} ${c.c.y})` : undefined} {...attrs} />
+  {:else if c.kind === 'rect'}
+    <rect
+      x={c.x}
+      y={c.y}
+      width={c.w}
+      height={c.h}
+      rx={c.rx > 0 ? c.rx : undefined}
+      transform={Math.abs(c.rot) > 1e-9 ? `rotate(${deg(c.rot)} ${c.x} ${c.y})` : undefined}
+      {...attrs}
+    />
+  {:else if c.kind === 'polygon'}
+    <polygon points={c.pts.map((q) => `${q.x},${q.y}`).join(' ')} {...attrs} />
+  {:else}
+    <path d={cutPathD(c)} fill-rule={c.fillRule === 'evenodd' ? 'evenodd' : undefined} {...attrs} />
+  {/if}
+{/snippet}
+
 <g data-shape-id={s.id}>
   {#if s.kind === 'text'}
     <text
@@ -89,10 +117,24 @@
       style="pointer-events: bounding-box">{s.text}</text
     >
   {:else}
-    {@render geom(vis)}
-    {#if needsTwin}{@render geom(twin)}{/if}
+    {#if cuts.length}
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x={viewBox[0]} y={viewBox[1]} width={viewBox[2]} height={viewBox[3]} style="mask-type: luminance">
+          <rect x={viewBox[0]} y={viewBox[1]} width={viewBox[2]} height={viewBox[3]} fill="white" />
+          {#each cuts as c}{@render cutGeom(c, { fill: 'black', stroke: 'none' })}{/each}
+        </mask>
+      </defs>
+      <g mask={`url(#${maskId})`}>
+        {@render geom(vis)}
+        {#if needsTwin}{@render geom(twin)}{/if}
+      </g>
+    {:else}
+      {@render geom(vis)}
+      {#if needsTwin}{@render geom(twin)}{/if}
+    {/if}
   {/if}
   {#if selected || hovered}
-    {@render geom(outline)}
+    <g mask={cuts.length ? `url(#${maskId})` : undefined}>{@render geom(outline)}</g>
+    {#each cuts as c}{@render cutGeom(c, outline)}{/each}
   {/if}
 </g>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Favicon cut of the mark: at 16px only three moves survive — the ink
+       shape with its one big solved corner, the radius line, and the ringed
+       center point. Monochrome: black ink, white construction. The dashed
+       construction circle is dropped; it turns to noise below 24px. -->
+  <path d="M3 7 Q3 3 7 3 H14 A15 15 0 0 1 29 18 V25 Q29 29 25 29 H7 Q3 29 3 25 Z" fill="#141414"/>
+  <path d="M14 18 L24.6 7.4" stroke="#ffffff" stroke-opacity=".9" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="14" cy="18" r="3.2" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+</svg>

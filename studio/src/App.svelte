@@ -218,7 +218,7 @@
   .drop {
     position: fixed;
     inset: 0;
-    background: rgba(79, 70, 229, 0.08);
+    background: rgba(0, 0, 0, 0.05);
     border: 2px dashed var(--primary);
     display: none;
     place-items: center;

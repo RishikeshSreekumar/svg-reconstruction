@@ -16,8 +16,13 @@ export const ICONS: Record<string, string> = {
   polygon:
     '<path d="M10.83 2.38a2 2 0 0 1 2.34 0l8 5.74a2 2 0 0 1 .73 2.25l-3.04 9.26a2 2 0 0 1-1.9 1.37H7.04a2 2 0 0 1-1.9-1.37L2.1 10.37a2 2 0 0 1 .73-2.25z"/>',
   text: '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
+  curve: '<circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/>',
+  path: '<path d="M5 19C8 19 8 5 12 5s4 14 7 14"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="19" r="2"/>',
   'guide-h': '<path d="M2 12h20"/><circle cx="12" cy="12" r="3"/>',
   'guide-v': '<path d="M12 2v20"/><circle cx="12" cy="12" r="3"/>',
+  'guide-angle': '<path d="M3 19 21 5"/><circle cx="12" cy="12" r="3"/>',
+  cut: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.6 8.5 12.2 7.1"/><path d="m8.6 15.5 12.2-7.1"/>',
+  ungroup: '<rect width="8" height="6" x="5" y="4" rx="1"/><rect width="8" height="6" x="11" y="14" rx="1"/>',
 
   // view toggles
   compare: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>',

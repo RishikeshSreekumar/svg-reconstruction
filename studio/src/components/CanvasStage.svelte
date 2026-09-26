@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Pt, Shape } from '../../../src/types.ts';
-  import { createShape, editShapeParams, nextUserGuideId, shapeAnchor, translateShapeInScene, type CreatableKind } from '../../../src/index.ts';
+  import { createShape, editShapeParams, nextUserGuideId, shapeAnchor, sizeCurve, translateShapeInScene, type CreatableKind } from '../../../src/index.ts';
   import { store } from '../state/scene.svelte.ts';
   import { view } from '../state/view.svelte.ts';
   import { tools } from '../state/tools.svelte.ts';
@@ -91,9 +91,21 @@
     | { t: 'handle'; handle: Handle }
     | { t: 'body'; id: string; start: Pt; anchor0: Pt }
     | { t: 'guide'; id: string }
+    | { t: 'guide-angle'; id: string; anchor: Pt }
     | { t: 'size'; id: string; kind: CreatableKind; anchor: Pt }
     | { t: 'pan'; startClient: Pt; startC: Pt };
   let drag: Drag | null = null;
+
+  // A click is not an edit: the undo checkpoint is taken lazily on the first
+  // mutation of the gesture, so selecting a shape or grabbing a handle without
+  // moving it never pushes history (or clears the redo stack).
+  let needCommit = false;
+
+  function commitOnce(): void {
+    if (!needCommit) return;
+    needCommit = false;
+    store.checkpoint();
+  }
 
   // Hover feedback: which shape is under the cursor, and which handle is in reach.
   let hoverId: string | null = $state(null);
@@ -154,7 +166,7 @@
       const hi = nearestHandle(p);
       if (hi != null) {
         ev.preventDefault();
-        store.checkpoint();
+        needCommit = true;
         drag = { t: 'handle', handle: handles[hi] };
         view.compare = false;
         return;
@@ -162,7 +174,7 @@
       const guideEl = (ev.target as Element).closest?.('[data-guide-id]');
       const guideId = guideEl?.getAttribute('data-guide-id');
       if (guideId) {
-        store.checkpoint();
+        needCommit = true;
         drag = { t: 'guide', id: guideId };
         return;
       }
@@ -171,7 +183,7 @@
       if (shapeId) {
         if (store.selected !== shapeId) store.select(shapeId);
         view.compare = false;
-        store.checkpoint();
+        needCommit = true;
         const target = scene.shapes.find((x) => x.id === shapeId);
         drag = { t: 'body', id: shapeId, start: p, anchor0: target ? shapeAnchor(target) : p };
         return;
@@ -180,19 +192,24 @@
       return;
     }
 
-    if (tool === 'guide-h' || tool === 'guide-v') {
+    if (tool === 'guide-h' || tool === 'guide-v' || tool === 'guide-angle') {
       const sp = snap(p, ev);
+      let guideId = '';
       store.mutate(
         (s) => {
-          const id = nextUserGuideId(s);
+          guideId = nextUserGuideId(s);
           (s.guidelines ??= []).push(
             tool === 'guide-h'
-              ? { id, source: 'user', role: 'align', kind: 'h', y: sp.y }
-              : { id, source: 'user', role: 'align', kind: 'v', x: sp.x },
+              ? { id: guideId, source: 'user', role: 'align', kind: 'h', y: sp.y }
+              : tool === 'guide-v'
+                ? { id: guideId, source: 'user', role: 'align', kind: 'v', x: sp.x }
+                : { id: guideId, source: 'user', role: 'align', kind: 'angled', p: { ...sp }, dir: { x: Math.SQRT1_2, y: Math.SQRT1_2 } },
           );
         },
         { commit: true, rebuild: false },
       );
+      if (tool === 'guide-angle') drag = { t: 'guide-angle', id: guideId, anchor: sp };
+      else tools.set('select'); // one guide per invocation, same as the shape tools
       return;
     }
 
@@ -244,6 +261,7 @@
     }
     if (d.t === 'handle') {
       const sp = snap(p, ev, { exclude: d.handle.shape });
+      commitOnce();
       store.mutate(() => d.handle.apply(sp));
       if (store.warning) flagRefusal(d.handle.at);
       // The scene was re-solved; keep dragging the same conceptual handle.
@@ -261,21 +279,40 @@
       const sp = snap(want, ev, { exclude: d.id });
       const a = shapeAnchor(shape);
       if (sp.x !== a.x || sp.y !== a.y) {
+        commitOnce();
         store.mutate(() => translateShapeInScene(s, d.id, sp.x - a.x, sp.y - a.y, store.editOpts()));
       }
       return;
     }
     if (d.t === 'guide') {
       const sp = snap(p, ev, { guides: false }); // grid only: a guide must not snap to itself
+      commitOnce();
       store.mutate(
         (s) => {
           const g = s.guidelines?.find((x) => x.id === d.id);
           if (!g) return;
           if (g.kind === 'h') g.y = sp.y;
           else if (g.kind === 'v') g.x = sp.x;
+          else if (g.kind === 'angled') g.p = { ...sp };
         },
         { rebuild: false },
       );
+      return;
+    }
+    if (d.t === 'guide-angle') {
+      const sp = snap(p, ev, { guides: false });
+      const dx = sp.x - d.anchor.x;
+      const dy = sp.y - d.anchor.y;
+      const len = Math.hypot(dx, dy);
+      if (len > unit * 2) {
+        store.mutate(
+          (s) => {
+            const g = s.guidelines?.find((x) => x.id === d.id);
+            if (g?.kind === 'angled') g.dir = { x: dx / len, y: dy / len };
+          },
+          { rebuild: false },
+        );
+      }
       return;
     }
     if (d.t === 'size') {
@@ -285,13 +322,13 @@
       store.mutate((s) => {
         switch (d.kind) {
           case 'circle':
-            editShapeParams(s, d.id, { r: rr }, {});
+            editShapeParams(s, d.id, { r: rr }, store.editOpts());
             break;
           case 'polygon':
-            editShapeParams(s, d.id, { r: rr }, {});
+            editShapeParams(s, d.id, { r: rr }, store.editOpts());
             break;
           case 'ellipse':
-            editShapeParams(s, d.id, { rx: Math.max(Math.abs(sp.x - a.x), unit), ry: Math.max(Math.abs(sp.y - a.y), unit) }, {});
+            editShapeParams(s, d.id, { rx: Math.max(Math.abs(sp.x - a.x), unit), ry: Math.max(Math.abs(sp.y - a.y), unit) }, store.editOpts());
             break;
           case 'rect':
             editShapeParams(
@@ -303,11 +340,14 @@
                 w: Math.max(Math.abs(sp.x - a.x), unit),
                 h: Math.max(Math.abs(sp.y - a.y), unit),
               },
-              {},
+              store.editOpts(),
             );
             break;
           case 'line':
-            editShapeParams(s, d.id, { 'a.x': a.x, 'a.y': a.y, 'b.x': sp.x, 'b.y': sp.y }, {});
+            editShapeParams(s, d.id, { 'a.x': a.x, 'a.y': a.y, 'b.x': sp.x, 'b.y': sp.y }, store.editOpts());
+            break;
+          case 'curve':
+            sizeCurve(s, d.id, a, sp);
             break;
           case 'text':
             break;
@@ -318,8 +358,9 @@
   }
 
   function onpointerup(): void {
-    if (drag?.t === 'size') tools.set('select');
+    if (drag?.t === 'size' || drag?.t === 'guide-angle') tools.set('select');
     drag = null;
+    needCommit = false;
     view.snapHint = '';
   }
 
@@ -385,7 +426,7 @@
             <GridLayer viewBox={vb} step={gridStep} {unit} />
           {/if}
           {#each shapes as s (s.id)}
-            <ShapeView {s} hitPad={10 * unit} {unit} selected={store.selected === s.id} hovered={hoverId === s.id && store.selected !== s.id} />
+            <ShapeView {s} hitPad={10 * unit} {unit} viewBox={vb} selected={store.selected === s.id} hovered={hoverId === s.id && store.selected !== s.id} />
           {/each}
           {#if view.showGuides}
             <GuidelinesLayer {scene} viewBox={vb} {unit} selected={store.selected} selectedSegKey={segKey} />
@@ -455,9 +496,11 @@
   .stage.tool-rect,
   .stage.tool-line,
   .stage.tool-polygon,
+  .stage.tool-curve,
   .stage.tool-text,
   .stage.tool-guide-h,
-  .stage.tool-guide-v {
+  .stage.tool-guide-v,
+  .stage.tool-guide-angle {
     cursor: crosshair;
   }
   .board {

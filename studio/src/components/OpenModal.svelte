@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fitToStage, loadSample, loadSVG, looksLikeSVG, sampleLabel, sampleNames, samples } from '../lib/svg-load.ts';
+  import { tooltip } from '../lib/tooltip.ts';
   import Icon from './Icon.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -84,7 +85,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="Open an SVG" bind:this={modalEl}>
     <header>
       <h2>Open an SVG</h2>
-      <button class="mini" onclick={onclose} title="Close" aria-label="Close"><Icon name="x" size={14} /></button>
+      <button class="mini" onclick={onclose} use:tooltip={'Close'} aria-label="Close"><Icon name="x" size={14} /></button>
     </header>
 
     <div class="tabs" role="tablist" aria-label="Source">
@@ -110,7 +111,7 @@
       {#if tab === 'preset'}
         <div class="presets">
           {#each sampleNames as n (n)}
-            <button class="preset" onclick={() => pickPreset(n)} title={sampleLabel(n)}>
+            <button class="preset" onclick={() => pickPreset(n)}>
               <span class="art">{@html fitToStage(samples[n])}</span>
               <span class="name">{sampleLabel(n)}</span>
             </button>
@@ -145,7 +146,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(17, 23, 38, 0.32);
+    background: rgba(0, 0, 0, 0.32);
     backdrop-filter: blur(2px);
     display: grid;
     place-items: center;

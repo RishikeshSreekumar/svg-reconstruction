@@ -37,15 +37,20 @@
       stroke-dasharray={`${6 * unit} ${4 * unit}`}
     />
   {/if}
+  <!-- White casing under every hot mark: monochrome ink is black, and a black
+       highlight would vanish where it crosses the artwork. -->
   {#if axisPts}
+    <line x1={axisPts.x1} y1={axisPts.y1} x2={axisPts.x2} y2={axisPts.y2} stroke="rgba(255, 255, 255, 0.85)" stroke-width={2.4 * unit} stroke-dasharray={`${6 * unit} ${4 * unit}`} />
     <line x1={axisPts.x1} y1={axisPts.y1} x2={axisPts.x2} y2={axisPts.y2} stroke={HOT} stroke-width={unit} stroke-dasharray={`${6 * unit} ${4 * unit}`} />
   {/if}
   {#each hl.circles ?? [] as c, i (i)}
+    <circle cx={c.c.x} cy={c.c.y} r={c.r} stroke="rgba(255, 255, 255, 0.85)" stroke-width={2.2 * unit} opacity="0.9" />
     <circle cx={c.c.x} cy={c.c.y} r={c.r} stroke={HOT} stroke-width={0.8 * unit} opacity="0.9" />
+    <line x1={c.c.x} y1={c.c.y} x2={c.c.x + c.r} y2={c.c.y} stroke="rgba(255, 255, 255, 0.85)" stroke-width={2 * unit} stroke-dasharray={`${3 * unit} ${2 * unit}`} />
     <line x1={c.c.x} y1={c.c.y} x2={c.c.x + c.r} y2={c.c.y} stroke={HOT} stroke-width={0.6 * unit} stroke-dasharray={`${3 * unit} ${2 * unit}`} />
   {/each}
   {#each hl.points ?? [] as p, i (i)}
-    <circle cx={p.x} cy={p.y} r={2 * unit} fill={HOT} stroke="none" />
+    <circle cx={p.x} cy={p.y} r={2 * unit} fill={HOT} stroke="rgba(255, 255, 255, 0.85)" stroke-width={unit} />
   {/each}
   {#if hl.label && hl.at}
     <text

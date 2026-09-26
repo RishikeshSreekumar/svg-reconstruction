@@ -1,8 +1,10 @@
 import type { Pt, Scene, SegRef, Shape } from '../../../src/types.ts';
 import {
-  editSegmentParam,
+  editCubicControl,
+  editSegmentRadiusAt,
   editShapeParam,
   editShapeParams,
+  isBezier,
   moveJoin,
   moveSegmentCenter,
   segEnd,
@@ -108,6 +110,12 @@ function pathHandles(scene: Scene, s: Extract<Shape, { kind: 'path' }>, opts: Ed
           apply: (p) => track(moveJoin(scene, ref, 'start', p.x, p.y, opts)),
         });
       }
+      if (isBezier(f)) {
+        // Control points draw hollow, like radius handles: they set a tangent,
+        // not a point on the outline.
+        out.push({ at: f.c1, hint: `c1 ${i}`, radius: true, shape: s.id, seg: ref, apply: (p) => track(editCubicControl(scene, ref, 'c1', p, opts)) });
+        out.push({ at: f.c2, hint: `c2 ${i}`, radius: true, shape: s.id, seg: ref, apply: (p) => track(editCubicControl(scene, ref, 'c2', p, opts)) });
+      }
       if (f.kind !== 'arc') return;
       out.push({
         at: f.c,
@@ -123,7 +131,10 @@ function pathHandles(scene: Scene, s: Extract<Shape, { kind: 'path' }>, opts: Ed
         radius: true,
         shape: s.id,
         seg: ref,
-        apply: (p) => track(editSegmentParam(scene, ref, 'r', Math.hypot(p.x - f.c.x, p.y - f.c.y), opts)),
+        // Solved, not measured: radius-from-centre distance diverges when the
+        // refit moves the centre, so the engine solves the radius that puts
+        // the arc under the pointer.
+        apply: (p) => track(editSegmentRadiusAt(scene, ref, p, opts)),
       });
     });
     const last = c.segs[c.segs.length - 1];

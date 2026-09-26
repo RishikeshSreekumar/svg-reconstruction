@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SVG Reconstruction</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#111111" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- IBM Plex: a drafting-table face rather than another Inter clone. The
@@ -16,48 +18,65 @@
     <style>
       :root {
         /* Light only, on purpose: the artwork board is white, so dark chrome
-           around it fought the thing being judged. Everything is one family of
-           cool neutrals, so the board reads as the brightest surface. */
+           around it fought the thing being judged. Monochrome throughout — one
+           neutral value ladder from white board to black ink, so the board
+           reads as the brightest surface and hierarchy is carried by value,
+           not hue. */
         --bg: #ffffff;
-        --canvas: #eef1f6; /* stage backdrop behind the white board */
-        --panel: #f7f8fb; /* raised card */
-        --panel2: #eaeef4; /* hover / pressed */
-        --line: #e0e5ee;
-        --line-strong: #c8d0dd;
-        --text: #111726;
-        --dim: #58637a; /* 7.0:1 on --bg */
-        --faint: #6b7689; /* floor for 11px text: 4.9:1 on --bg */
+        --canvas: #ededed; /* stage backdrop behind the white board */
+        --panel: #f7f7f7; /* raised card */
+        --panel2: #ececec; /* hover / pressed */
+        --line: #e3e3e3;
+        --line-strong: #c9c9c9;
+        --text: #141414;
+        --dim: #595959; /* 7.0:1 on --bg */
+        --faint: #6b6b6b; /* floor for 11px text: 5.3:1 on --bg */
 
-        /* Primary — indigo. Selection, active tool, focus, everything structural. */
-        --primary: #4f46e5;
-        --primary-hover: #4338ca;
-        --primary-soft: #eeecfd;
-        --primary-line: #c7c2f6;
-        /* Secondary — teal. Solved/derived facts: tangency, snap, confirmation. */
-        --secondary: #0f766e;
-        --secondary-soft: #e2f2f0;
-        /* Accent — amber. Attention without alarm: hovered spec rows, hints. */
-        --accent: #b45309;
-        --accent-soft: #fdf1e0;
-        --accent-line: #f0d5ac;
+        /* Primary — ink black. Selection, active tool, focus, everything structural. */
+        --primary: #171717;
+        --primary-hover: #000000;
+        --primary-soft: #ececec;
+        --primary-line: #a8a8a8;
+        /* Secondary — dark grey. Solved/derived facts: tangency, snap, confirmation. */
+        --secondary: #404040;
+        --secondary-soft: #efefef;
+        /* Accent — near-black. Attention without alarm: hovered spec rows, hints. */
+        --accent: #262626;
+        --accent-soft: #f1f1f1;
+        --accent-line: #d6d6d6;
 
-        --good: #15803d;
-        --warn: #b45309;
-        --bad: #be123c;
-        --bad-soft: #fdeaee;
+        /* Monochrome state ladder: darker = louder. Calm results sit at the
+           text's own grey; trouble steps toward black. */
+        --good: #595959;
+        --warn: #262626;
+        --bad: #000000;
+        --bad-soft: #e9e9e9;
 
-        --shadow-sm: 0 1px 2px rgba(17, 23, 38, 0.06);
-        --shadow: 0 1px 2px rgba(17, 23, 38, 0.06), 0 10px 28px rgba(17, 23, 38, 0.1);
-        --shadow-lg: 0 12px 40px rgba(17, 23, 38, 0.18);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 28px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.18);
 
-        /* Canvas mark palette — drawn on the white board, not the chrome. */
-        --mark: #4338ca;
-        --mark-soft: rgba(67, 56, 202, 0.45);
-        --mark-hot: #b45309;
-        --mark-amber: #92400e;
+        /* Canvas mark palette — drawn on the white board, not the chrome.
+           Monochrome, so the ladder is value: passive guides lightest, the
+           selected shape's construction darker, the hot segment full black. */
+        --mark: #4d4d4d;
+        --mark-soft: rgba(0, 0, 0, 0.35);
+        --mark-hot: #000000;
+        --mark-amber: #8a8a8a;
         color-scheme: light;
       }
       * { box-sizing: border-box; }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
       body {
         margin: 0;
         background: var(--bg);
@@ -99,39 +118,63 @@
         background: var(--primary);
         color: #fff;
         font-weight: 500;
-        box-shadow: 0 1px 2px rgba(79, 70, 229, .3);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
       }
       .ibtn.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: transparent; color: #fff; }
       .ibtn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
       .ibtn.ghost:hover:not(:disabled) { background: var(--panel2); border-color: transparent; }
 
-      /* side panel */
-      .side { overflow-y: auto; padding: 2px 12px 14px; background: var(--bg); min-height: 0; }
+      /* side panel — a flex column so an open section can take the height the
+         collapsed ones gave back instead of leaving dead space beneath it. */
+      .side {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 2px 12px 14px;
+        background: var(--bg);
+      }
       .shape {
         border: 1px solid var(--line);
         border-radius: 9px;
-        padding: 9px 11px;
+        padding: 0 11px;
         margin-bottom: 7px;
         background: var(--panel);
         transition: border-color .12s ease, box-shadow .12s ease;
       }
       .shape:hover { border-color: var(--line-strong); }
+      .shape { container-type: inline-size; }
       .shape.sel { border-color: var(--primary); background: var(--bg); box-shadow: 0 0 0 3px var(--primary-soft); }
-      .shape h3 { margin: 0 0 7px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-      .shape h3 .tools { display: inline-flex; align-items: center; gap: 2px; }
+      .shape h3 { margin: 0; min-height: 42px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+      .shape h3 .tools { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+      .shape-toggle { min-width: 0; display: inline-flex; align-items: center; gap: 8px; flex: 1; }
+      .shape-name { flex: 1 1 auto; min-width: 3ch; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .shape-chev { display: grid; place-items: center; color: var(--faint); transition: transform .12s ease; flex: none; }
+      .shape-chev.open { transform: rotate(90deg); }
+      .shape-body { padding: 0 0 11px; border-top: 1px solid var(--line); }
       .kind {
-        display: inline-block;
-        padding: 1px 6px;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
         border-radius: 5px;
         background: var(--primary-soft);
         color: var(--primary);
-        font-weight: 600;
-        font-size: 10px;
-        letter-spacing: .3px;
-        text-transform: uppercase;
       }
-      .sid { color: var(--dim); font-variant-numeric: tabular-nums; margin-left: 6px; }
-      .conf { font-variant-numeric: tabular-nums; font-size: 11px; margin-left: 4px; font-weight: 500; }
+      /* Reads as a measurement chip, not a badge — and carries the sentence
+         that says what it measured on hover. */
+      .conf {
+        font-variant-numeric: tabular-nums;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: .2px;
+        white-space: nowrap;
+        cursor: help;
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: var(--panel2);
+      }
+      .shape.sel .conf { background: var(--panel); }
       .bar { height: 3px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-bottom: 9px; }
       .bar > i { display: block; height: 100%; border-radius: 3px; }
       button.bare { background: none; border: none; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; box-shadow: none; }
@@ -140,7 +183,9 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 3px;
+        width: 24px;
+        height: 24px;
+        padding: 0;
         font-size: 10px;
         border-radius: 5px;
         border-color: transparent;
@@ -149,36 +194,122 @@
         color: var(--faint);
       }
       button.mini:hover { color: var(--text); background: var(--panel2); border-color: transparent; }
+      button.mini:disabled { opacity: .25; }
       button.mini.danger:hover { color: var(--bad); background: var(--bad-soft); border-color: transparent; }
-      .params { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; align-items: center; }
-      .params.wide { grid-template-columns: auto 1fr auto 1fr; }
-      .params label { color: var(--dim); font-size: 11px; }
-      .params input, .stylerow input, .textrow input, .textrow select {
-        width: 100%;
+      .property-group { margin-top: 10px; }
+      .property-title { margin-bottom: 6px; color: var(--faint); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .55px; }
+      .property-title span { float: right; font-variant-numeric: tabular-nums; }
+      /* One caption column for the whole group, so every value box in a card
+         starts on the same vertical line whatever the label is called. */
+      .params { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+      .plabel { color: var(--dim); font-size: 11px; line-height: 1.3; }
+      /* Two columns always: a lone value keeps the same box width as the X of a
+         pair, so every number in a card starts and ends on the same two lines. */
+      .pfields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; min-width: 0; }
+      .pfields.wide { grid-template-columns: minmax(0, 1fr); }
+      /* The affixes sit inside the box: the field is one object, not a row of three. */
+      .pfield {
+        position: relative;
+        display: flex;
+        align-items: center;
+        min-width: 0;
         background: var(--bg);
         border: 1px solid var(--line-strong);
         border-radius: 6px;
+        transition: border-color .12s ease, box-shadow .12s ease;
+      }
+      .pfield:hover { border-color: var(--faint); }
+      .pfield:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+      .pfield input, .pfield select {
+        width: 100%;
+        min-width: 0;
+        background: none;
+        border: none;
+        border-radius: 6px;
         color: var(--text);
-        padding: 4px 8px;
+        padding: 5px 8px;
         font: inherit;
         font-size: 12px;
         font-variant-numeric: tabular-nums;
-        transition: border-color .12s ease, box-shadow .12s ease;
       }
-      .params input:hover, .stylerow input:hover, .textrow input:hover { border-color: var(--faint); }
-      .params input:focus, .stylerow input:focus, .textrow input:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px var(--primary-soft);
+      .pfield input:focus, .pfield select:focus { outline: none; }
+      /* Spin buttons cost a third of a narrow field and are a poor fit for
+         geometry; the caption and the axis glyph scrub instead, and arrow keys
+         still step the focused input. */
+      .pfield input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+      .pfield input[type=number]::-webkit-inner-spin-button,
+      .pfield input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+      .paxis, .punit {
+        flex: none;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--faint);
+        font-variant-numeric: tabular-nums;
       }
-      /* Steppers stay faintly visible so they can be discovered, full on intent. */
-      .params input[type=number]::-webkit-inner-spin-button { opacity: .35; }
-      .params input[type=number]:hover::-webkit-inner-spin-button,
-      .params input[type=number]:focus::-webkit-inner-spin-button { opacity: 1; }
-      .stylerow { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 5px 10px; align-items: center; margin-top: 8px; }
-      .stylerow label { color: var(--dim); font-size: 11px; }
-      .textrow { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-bottom: 7px; }
-      .textrow select { width: auto; }
+      .paxis { padding: 0 0 0 7px; margin-right: -3px; }
+      .punit { padding: 0 8px 0 0; }
+      .scrub { cursor: ew-resize; touch-action: none; user-select: none; -webkit-user-select: none; }
+      .scrub:hover, .scrub.scrubbing { color: var(--primary); }
+      .plabel.scrub.scrubbing { color: var(--primary); }
+      .pfield .color-control { width: 100%; }
+
+      /* The card, not the viewport, decides how much it can show: the panel is
+         user-resizable from 240px up, and at the narrow end the shape's name
+         must outrank its fit chip, and a pair of boxes must stop competing for
+         a width that fits neither. */
+      @container (max-width: 236px) {
+        .conf { display: none; }
+        .pfields { grid-template-columns: minmax(0, 1fr); }
+        .params { grid-template-columns: 76px minmax(0, 1fr); }
+      }
+      .color-control { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 0; align-items: center; }
+      .color-control .color-text {
+        width: 100%;
+        min-width: 0;
+        background: none;
+        border: none;
+        color: var(--text);
+        padding: 5px 8px;
+        font: inherit;
+        font-size: 12px;
+      }
+      .color-control .color-text:focus { outline: none; }
+      input.color-picker {
+        width: 21px;
+        height: 21px;
+        margin-right: 5px;
+        padding: 2px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--bg);
+        cursor: pointer;
+      }
+      input.color-picker:hover { border-color: var(--faint); }
+      input.color-picker:focus-visible { border-color: var(--primary); }
+      input.color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+      input.color-picker::-webkit-color-swatch { border: none; border-radius: 3px; }
+      input.color-picker::-moz-color-swatch { border: none; border-radius: 3px; }
+      input.color-picker.empty { background: linear-gradient(135deg, var(--bg) 46%, var(--bad) 47%, var(--bad) 53%, var(--bg) 54%); }
+      input.color-picker.empty::-webkit-color-swatch { opacity: 0; }
+      input.color-picker.empty::-moz-color-swatch { opacity: 0; }
+
+      .cut-action {
+        width: 100%;
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 5px 9px;
+        color: var(--primary);
+        background: var(--primary-soft);
+        border-color: var(--primary-line);
+        font-weight: 500;
+      }
+      .cut-action:hover:not(:disabled) { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--primary); }
+      .action-note { margin-top: 4px; color: var(--faint); font-size: 10px; line-height: 1.4; }
+      .cutrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dim); font-size: 11px; }
+      .cutrow button { padding: 3px 7px; font-size: 10px; color: var(--dim); background: var(--bg); }
       .note {
         color: var(--dim);
         font-size: 11px;
@@ -193,17 +324,17 @@
         display: grid;
         grid-template-columns: auto auto 1fr auto;
         gap: 0 10px;
-        margin-top: 9px;
-        padding-top: 8px;
-        border-top: 1px solid var(--line);
+        margin-top: 0;
         font-size: 11px;
         color: var(--dim);
         font-variant-numeric: tabular-nums;
       }
       .segs .i { color: var(--faint); text-align: right; }
       .segs .h { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding-bottom: 4px; }
-      .segs > button { padding: 3px 0; border-radius: 0; }
+      .segs > button { padding: 4px 0; border-radius: 0; }
       .segs > button:hover { color: var(--text); }
+      .segs > button.on { color: var(--primary); }
+      .segs > button.k.on, .segs > button.v.on { font-weight: 500; }
       .segwarn { margin-top: 6px; color: var(--warn); font-size: 11px; }
       .segs .k { color: var(--text); }
       .segs .j { text-align: right; white-space: nowrap; }
@@ -213,7 +344,7 @@
         padding: 8px 9px;
         border: 1px solid var(--primary-line);
         border-radius: 7px;
-        background: var(--primary-soft);
+        background: var(--bg);
       }
       .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-variant-numeric: tabular-nums; }
       .stats span:nth-child(odd) { color: var(--dim); }
@@ -221,6 +352,40 @@
       ul.cons li { padding: 5px 0; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 11px; line-height: 1.5; }
       ul.cons li:last-child { border-bottom: none; }
       ul.cons li b { color: var(--text); font-weight: 500; }
+
+      /* One shared tooltip element (lib/tooltip.ts): instant where the native
+         title's ~1s delay made every hint feel broken. Dark chip so it reads
+         as chrome speaking, not another card. */
+      .ui-tip {
+        position: fixed;
+        z-index: 60;
+        max-width: 270px;
+        padding: 5px 9px;
+        background: var(--text);
+        color: #fff;
+        font-size: 11px;
+        line-height: 1.45;
+        font-weight: 400;
+        border-radius: 6px;
+        box-shadow: var(--shadow);
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(2px);
+        transition: opacity .1s ease, transform .1s ease;
+        text-wrap: pretty;
+      }
+      .ui-tip.show { opacity: 1; transform: none; }
+
+      /* The studio is desktop-first, but a narrow window must still retain a
+         usable canvas. The workspace becomes horizontally pannable instead of
+         allowing the flexible canvas track to collapse behind the inspector. */
+      @media (max-width: 700px) {
+        .main {
+          grid-template-columns: 48px minmax(420px, 1fr) 5px 320px !important;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
+      }
     </style>
   </head>
   <body>

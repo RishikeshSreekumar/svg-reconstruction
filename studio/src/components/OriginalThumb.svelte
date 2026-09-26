@@ -1,24 +1,23 @@
 <script lang="ts">
-  import { countCoords } from '../../../src/index.ts';
   import { store } from '../state/scene.svelte.ts';
-  import { fitToStage } from '../lib/svg-load.ts';
+  import { tooltip } from '../lib/tooltip.ts';
   import Icon from './Icon.svelte';
 
-  const html = $derived(store.inputSVG ? fitToStage(store.inputSVG) : '');
-  const stat = $derived(store.inputSVG ? countCoords(store.inputSVG) : 0);
+  // Rendered through an <img> data URI, never {@html}: the input is arbitrary
+  // dropped markup, and an image element cannot run its scripts.
+  const href = $derived(store.inputSVG ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(store.inputSVG)}` : '');
 
   let open = $state(true);
 </script>
 
-{#if html}
+{#if href}
   <aside class="thumb">
-    <button class="head" onclick={() => (open = !open)} title={open ? 'Hide the original' : 'Show the original'} aria-expanded={open}>
+    <button class="head" onclick={() => (open = !open)} use:tooltip={open ? 'Hide the original' : 'Show the original'} aria-expanded={open}>
       <Icon name="eye" size={12} />
       <span class="label">Original</span>
-      <span class="stat">{stat} numbers</span>
     </button>
     {#if open}
-      <div class="art" title="The input path soup, untouched">{@html html}</div>
+      <div class="art"><img src={href} alt="Original SVG input" /></div>
     {/if}
   </aside>
 {/if}
@@ -60,12 +59,6 @@
     letter-spacing: 0.6px;
     font-weight: 600;
   }
-  .stat {
-    margin-left: auto;
-    color: var(--faint);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
   .art {
     background: #fff;
     border-top: 1px solid var(--line);
@@ -75,7 +68,7 @@
     padding: 8px;
     pointer-events: none;
   }
-  .art :global(svg) {
+  .art img {
     max-width: 100%;
     max-height: 100%;
   }

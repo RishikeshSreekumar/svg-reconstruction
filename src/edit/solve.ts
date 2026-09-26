@@ -1,6 +1,6 @@
-import type { ArcFit, Contour, Fit, LineFit, Pt } from '../types.ts';
+import type { ArcFit, Contour, CubicFit, Fit, LineFit, Pt } from '../types.ts';
 import { angNorm, cross, dist, dot, len, norm, perp, sub } from '../geom/vec.ts';
-import { angleOfPt, arcDir, segEnd, segPt, segStart, segTangent, syncArcEnds } from '../geom/seg.ts';
+import { angleOfPt, arcDir, isBezier, segEnd, segPt, segStart, segTangent, syncArcEnds, syncCubic } from '../geom/seg.ts';
 
 /**
  * A tiny chain solver, so a contour can be edited by its geometry instead of by
@@ -129,15 +129,47 @@ function placeArcEnd(f: ArcFit, end: 'start' | 'end', P: Pt, T: Pt | null): void
   syncArcEnds(f);
 }
 
-/** Slide a cubic fallback bodily so one end lands on `P`. */
-function placeCubicEnd(pts: Pt[], end: 'start' | 'end', P: Pt): void {
+/**
+ * Move one end of a cubic onto `P`, keeping the far end where it is.
+ *
+ * Pinning the far end is what makes editing next to a bezier stable: a bodily
+ * translation would hand the displacement straight to the next join, so a
+ * radius drag two segments away marches the whole contour across the canvas —
+ * one step per pointer event. An authored bezier moves its endpoint and the
+ * control leg attached to it; a raw sampled cubic spreads the displacement
+ * along its arc length, full at the moved end and zero at the far one.
+ */
+export function placeCubicEnd(f: CubicFit, end: 'start' | 'end', P: Pt): void {
+  const pts = f.pts;
   const cur = end === 'start' ? pts[0] : pts[pts.length - 1];
   if (!cur) return;
   const dx = P.x - cur.x;
   const dy = P.y - cur.y;
-  for (const q of pts) {
-    q.x += dx;
-    q.y += dy;
+  if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return;
+  if (isBezier(f)) {
+    if (end === 'start') {
+      pts[0] = { x: P.x, y: P.y };
+      f.c1 = { x: f.c1.x + dx, y: f.c1.y + dy };
+    } else {
+      pts[pts.length - 1] = { x: P.x, y: P.y };
+      f.c2 = { x: f.c2.x + dx, y: f.c2.y + dy };
+    }
+    syncCubic(f);
+    return;
+  }
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + dist(pts[i - 1], pts[i]));
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) {
+    for (const q of pts) {
+      q.x += dx;
+      q.y += dy;
+    }
+    return;
+  }
+  for (let i = 0; i < pts.length; i++) {
+    const w = end === 'start' ? 1 - cum[i] / total : cum[i] / total;
+    pts[i] = { x: pts[i].x + dx * w, y: pts[i].y + dy * w };
   }
 }
 
@@ -168,7 +200,7 @@ function placeEnd(fol: Fit, end: 'start' | 'end', P: Pt, T: Pt | null): void {
       placeArcEnd(fol, end, P, T);
       return;
     case 'cubic':
-      placeCubicEnd(fol.pts, end, P);
+      placeCubicEnd(fol, end, P);
       return;
     default:
       return; // circles and ellipses are never links in a chain

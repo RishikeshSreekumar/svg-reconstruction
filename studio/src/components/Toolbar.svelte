@@ -2,6 +2,7 @@
   import { bboxOf, bboxDiag, cloudOf, countCoords, flattenSVG, hausdorff, reconstructSVG, sceneToSVG } from '../../../src/index.ts';
   import { store } from '../state/scene.svelte.ts';
   import { loadSVG } from '../lib/svg-load.ts';
+  import { tooltip } from '../lib/tooltip.ts';
   import Icon from './Icon.svelte';
 
   let { onopen }: { onopen: () => void } = $props();
@@ -44,19 +45,26 @@
 <header class="toolbar">
   <div class="row">
     <span class="brand">
-      <span class="dot" aria-hidden="true"></span>
+      <!-- The mark (public/brand/mark.svg) at 18px: the dashed construction
+           circle is dropped at this size, keeping the ink shape, radius line,
+           and ringed center — same cut as the favicon. -->
+      <svg class="mark" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">
+        <path d="M3 7 Q3 3 7 3 H14 A15 15 0 0 1 29 18 V25 Q29 29 25 29 H7 Q3 29 3 25 Z" fill="var(--primary)" />
+        <path d="M14 18 L24.6 7.4" stroke="var(--bg)" stroke-opacity=".9" stroke-width="1.8" stroke-linecap="round" />
+        <circle cx="14" cy="18" r="3.2" fill="var(--primary)" stroke="var(--bg)" stroke-width="1.8" />
+      </svg>
       <h1>SVG Reconstruction</h1>
     </span>
     <span class="rule" aria-hidden="true"></span>
-    <button class="ibtn" onclick={onopen} title="Open a preset, pasted, or local SVG"><Icon name="open" />Open new</button>
+    <button class="ibtn" onclick={onopen} use:tooltip={{ text: 'Open a preset, pasted, or local SVG', place: 'bottom' }}><Icon name="open" />Open new</button>
     <button
       class="ibtn ghost"
       onclick={() => loadSVG(store.inputSVG, { flatten: true })}
       disabled={!store.scene}
-      title="Apply the forward model: destroy the construction the way an exporter would"><Icon name="flatten" />Flatten</button
+      use:tooltip={{ text: 'Apply the forward model: destroy the construction the way an exporter would', place: 'bottom' }}><Icon name="flatten" />Flatten</button
     >
     <span class="gap"></span>
-    <button class="ibtn primary" onclick={exportSVG} disabled={!store.scene} title="Export the reconstructed SVG"><Icon name="export" />Export</button>
+    <button class="ibtn primary" onclick={exportSVG} disabled={!store.scene} use:tooltip={{ text: 'Export the reconstructed SVG', place: 'bottom' }}><Icon name="export" />Export</button>
   </div>
 </header>
 
@@ -66,14 +74,9 @@
     align-items: center;
     gap: 8px;
   }
-  /* One small mark of primary so the header has an owner without a logo. */
-  .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 3px;
-    background: var(--primary);
-    box-shadow: 0 0 0 3px var(--primary-soft);
+  .mark {
     flex: none;
+    display: block;
   }
   .rule {
     width: 1px;
